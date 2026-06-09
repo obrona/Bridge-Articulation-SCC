@@ -2,7 +2,7 @@
 #include "treap.hpp"
 
 template <typename T, typename Compare = std::less<T>>
-void validate(TreapNode<T, Compare>& t) {
+void validate(TreapNode<T, Compare>* t) {
     if (t == nullptr) return;
 
     Compare cmp;
@@ -29,7 +29,7 @@ void validate(TreapNode<T, Compare>& t) {
 
 template <typename T, typename Compare = std::less<T>>
 void validate(TreapNode<T>* t, const vector<T>& expected) {
-    if (treap.root == nullptr) return;
+    if (t == nullptr) return;
 
     Compare cmp;
     vector<T> inorder;
@@ -49,5 +49,32 @@ void validate(TreapNode<T>* t, const vector<T>& expected) {
     dfs(t);
 
     assert(inorder == expected);
+}
+
+vector<int> random_nums(int len) {
+    vector<int> out(len);
+    iota(out.begin(), out.end(), 0);
+    shuffle(out.begin(), out.end(), mt19937{});
+    return out;
+}
+
+void test1() {
+    TreapNode<int>* root = nullptr;
+    for(int i = 0; i < 100000; i++) insert(root, 0);
+    assert(root->cnt == 100000);
+}
+
+void test2() {
+    auto nums = random_nums(100000);
+    vector<int> expected(100000);
+    iota(expected.begin(), expected.end(), 0);
+    
+    TreapNode<int>* root = nullptr;
+    for (int x : nums) insert(root, x);
+    validate(root, expected);
+}
+int main() {
+    test1();
+    test2();
 }
 
