@@ -4,3 +4,5 @@ a.out
 test.cpp
 aho_corasick_test
 avl_tree_test
+.codex/
+.agents/
