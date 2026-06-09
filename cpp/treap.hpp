@@ -27,7 +27,7 @@ array<TreapNode<T, Compare>*, 2> split(TreapNode<T> *t, T val, const Compare& cm
     }
 }
 
-// return less than, equal, more than
+// return less than, equal, more than.
 template<typename T, typename Compare = std::less<T>>
 array<TreapNode<T>*, 3> split_equal(TreapNode<T> *t, T val, const Compare& cmp = Compare()) {
     if (t == nullptr) return {nullptr, nullptr, nullptr};
@@ -35,7 +35,7 @@ array<TreapNode<T>*, 3> split_equal(TreapNode<T> *t, T val, const Compare& cmp =
     if (!cmp(t->val, val) && !cmp(val, t->val)) {
         auto l = t->l, r = t->r;
         t->l = t->r = nullptr;
-        return {t->l, t, t->r};
+        return {l, t, r};
     }
 
     if (cmp(t->val, val)) {
@@ -44,7 +44,7 @@ array<TreapNode<T>*, 3> split_equal(TreapNode<T> *t, T val, const Compare& cmp =
         return {t, e, r};
     } else {
         auto [l, e, r] = split_equal(t->l, val, cmp);
-        t->l = l;
+        t->l = r;
         return {l, e, t};
     }
 }
@@ -82,6 +82,7 @@ void insert(TreapNode<T, Compare>*& t, T val, const Compare& cmp = Compare()) {
 template <typename T, typename Compare = std::less<T>>
 void erase(TreapNode<T, Compare>*& t, T val, const Compare& cmp = Compare()) {
     auto [l, e, r] = split_equal<T, Compare>(t, val);
+    delete e;
     t = merge(l, r);
 }
 
@@ -92,7 +93,7 @@ TreapNode<T, Compare>* unite(TreapNode<T, Compare>* t1, TreapNode<T, Compare>* t
 
     if (t1->prior < t2->prior) swap(t1, t2);
     
-    auto [l, e, r] = split(t2, t1->val);
+    auto [l, e, r] = split_equal(t2, t1->val);
     if (e != nullptr) {
         t1->cnt += e->cnt;
         delete e;
@@ -100,6 +101,13 @@ TreapNode<T, Compare>* unite(TreapNode<T, Compare>* t1, TreapNode<T, Compare>* t
     t1->l = unite(t1->l, l);
     t1->r = unite(t1->r, r);
     return t1;
+}
+
+template<typename T, typename Compare = std::less<T>>
+int get_cnt(TreapNode<T, Compare>* t, T val, const Compare& cmp = Compare()) {
+    if (t == nullptr) return 0;
+    if (!cmp(t->val, val) && !cmp(val, t->val)) return t->cnt;
+    return cmp(t->val, val) ? get_cnt(t->r, val) : get_cnt(t->l, val);
 }
 
 template<typename T, typename Compare = std::less<T>>

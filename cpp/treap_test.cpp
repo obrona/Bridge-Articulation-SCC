@@ -1,4 +1,5 @@
 #include <bits/stdc++.h>
+#include <ranges>
 #include "treap.hpp"
 
 template <typename T, typename Compare = std::less<T>>
@@ -58,13 +59,15 @@ vector<int> random_nums(int len) {
     return out;
 }
 
-void test1() {
+void test_simple_insert() {
     TreapNode<int>* root = nullptr;
     for(int i = 0; i < 100000; i++) insert(root, 0);
     assert(root->cnt == 100000);
+
+    clean(root);
 }
 
-void test2() {
+void test_insert_delete() {
     auto nums = random_nums(100000);
     vector<int> expected(100000);
     iota(expected.begin(), expected.end(), 0);
@@ -72,9 +75,37 @@ void test2() {
     TreapNode<int>* root = nullptr;
     for (int x : nums) insert(root, x);
     validate(root, expected);
+
+    for (int x : std::views::iota(0, 100)) erase(root, x);
+    expected = vector(expected.begin() + 100, expected.end());
+    validate(root, expected);
+
+    clean(root);
 }
+
+void test_unite() {
+    auto nums = random_nums(100000);
+    vector<int> expected(100000);
+    iota(expected.begin(), expected.end(), 0);
+
+    TreapNode<int> *t1 = nullptr, *t2 = nullptr;
+    for (int x : nums) {
+        insert(t1, x);
+        insert(t2, x);
+    }
+
+    auto t3 = unite<int>(t1, t2);
+    for (int x : nums) {
+        assert(get_cnt(t3, x) == 2);
+    }
+    validate(t3, expected);
+
+    clean(t3);
+}
+
 int main() {
-    test1();
-    test2();
+    test_simple_insert();
+    test_insert_delete();
+    test_unite();
 }
 
