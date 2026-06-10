@@ -271,6 +271,47 @@ int rank_of_key(Node *t, const typename Node::Value& val, const typename Node::C
 
 }
 
+// 0 <= l_rank <= r_rank < t->sz
+// l_rank and r_rank are 0 indexed.
+// get range value for [l, r]
+template <TreapNodeLike Node>
+typename Node::Aggregate range_query(Node *t, int l_rank, int r_rank) {
+    assert(t != nullptr);
+    assert(0 <= l_rank && l_rank <= r_rank && r_rank < t->sz);
+
+    pull(t);
+
+    if (l_rank == 0 && r_rank == t->sz - 1) return t->res;
+
+    int go_left = get_sz(t->l);
+    int go_right = go_left + t->cnt;
+
+    if (r_rank < go_left) {
+        return range_query(t->l, l_rank, r_rank);
+    } else if (l_rank >= go_right) {
+        return range_query(t->r, l_rank - go_right, r_rank - go_right);
+    }
+
+    int node_count = min(go_right - 1, r_rank) - max(go_left, l_rank) + 1;
+    typename Node::Aggregate curr = node_count == t->cnt
+                                  ? t->self
+                                  : Node::RangePolicy::map(t->val, node_count);
+
+    if (l_rank < go_left) {
+        curr = Node::RangePolicy::reduce(
+            range_query(t->l, l_rank, go_left - 1),
+            curr
+        );
+    }
+    if (r_rank >= go_right) {
+        curr = Node::RangePolicy::reduce(
+            curr,
+            range_query(t->r, 0, r_rank - go_right)
+        );
+    }
+    return curr;
+}
+
 template<TreapNodeLike Node>
 int get_cnt(Node *t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
     if (t == nullptr) return 0;

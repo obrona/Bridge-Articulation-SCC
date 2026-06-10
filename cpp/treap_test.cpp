@@ -200,6 +200,54 @@ void test_lazy_aggregate_update() {
     clean(root);
 }
 
+void test_range_query() {
+    using SumNode = TreapNode<int, less<int>, long long, SumRange>;
+    SumNode* root = nullptr;
+
+    for (int value : {5, 1, 5, 3, 1, 7}) insert(root, value);
+    assert(range_query(root, 0, 5) == 22);
+    assert(range_query(root, 1, 4) == 14);
+    assert(range_query(root, 0, 1) == 2);
+    assert(range_query(root, 2, 3) == 8);
+    assert(range_query(root, 3, 5) == 17);
+
+    propogate(root, 10);
+    assert(range_query(root, 2, 5) == 60);
+    assert(range_query(root, 2, 5) == 60);
+    clean(root);
+}
+
+struct ConcatenateRange {
+    static string map(int value, int count) {
+        string result;
+        while (count-- > 0) result += to_string(value);
+        return result;
+    }
+
+    static string update(const string& value, const string&, int) {
+        return value;
+    }
+
+    static string propogate(const string& current, const string&) {
+        return current;
+    }
+
+    static string reduce(const string& left, const string& right) {
+        return left + right;
+    }
+};
+
+void test_range_query_order() {
+    using StringNode = TreapNode<int, less<int>, string, ConcatenateRange>;
+    StringNode* root = nullptr;
+
+    for (int value : {4, 1, 3, 2}) insert(root, value);
+    assert(range_query(root, 0, 3) == "1234");
+    assert(range_query(root, 1, 3) == "234");
+    assert(range_query(root, 0, 2) == "123");
+    clean(root);
+}
+
 int main() {
     test_simple_insert();
     test_insert_delete();
@@ -208,4 +256,6 @@ int main() {
     test_stateful_comparator();
     test_aggregate();
     test_lazy_aggregate_update();
+    test_range_query();
+    test_range_query_order();
 }
