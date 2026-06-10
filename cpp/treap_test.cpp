@@ -120,12 +120,39 @@ void test_rank() {
         assert(rank_of_key<int>(root, i) == i);
     }
 
+    clean(root);
+}
+
+void test_rank_2() {
+    vector<int> values = {
+        12, -4, 7, 12, 0, 25, -4, 7, 7, 18,
+        3, 12, 30, 0, -10, 18, 5, 25, 12, 3
+    };
+    vector<int> expected = values;
+    sort(expected.begin(), expected.end());
+
+    TreapNode<int>* root = nullptr;
+    for (int value : values) insert(root, value);
+
+    assert(root->sz == static_cast<int>(expected.size()));
+
+    for (int rank = 0; rank < static_cast<int>(expected.size()); rank++) {
+        assert(find_by_rank<int>(root, rank) == expected[rank]);
+    }
+
+    for (int key = -12; key <= 32; key++) {
+        int expected_rank = lower_bound(expected.begin(), expected.end(), key)
+                          - expected.begin();
+        assert(rank_of_key<int>(root, key) == expected_rank);
+    }
+
+    clean(root);
 }
 
 int main() {
-    //test_simple_insert();
-    //test_insert_delete();
-    //test_unite();
+    test_simple_insert();
+    test_insert_delete();
+    test_unite();
     test_rank();
+    test_rank_2();
 }
-

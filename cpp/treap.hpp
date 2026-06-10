@@ -117,8 +117,7 @@ TreapNode<T, Compare>* unite(TreapNode<T, Compare> *t1, TreapNode<T, Compare> *t
     return t1;
 }
 
-// rank is 0 indexed.
-// no error catching, i.e rank >= t->sz or t is nullptr, its your problem.
+// Rank is 0 indexed. Requires t != nullptr and 0 <= rank < t->sz.
 template<typename T, typename Compare = std::less<T>>
 T find_by_rank(TreapNode<T, Compare> *t, int rank) {
     int go_left = get_sz<T, Compare>(t->l);
