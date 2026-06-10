@@ -3,15 +3,16 @@
 #include "treap.hpp"
 
 template <TreapNodeLike Node>
-int validate_node(Node* t, const typename Node::Comparator& cmp) {
+int validate_node(Node* t) {
     if (t == nullptr) return 0;
 
     if (t->l != nullptr) assert(t->l->prior <= t->prior);
     if (t->r != nullptr) assert(t->r->prior <= t->prior);
 
-    int left_size = validate_node(t->l, cmp);
-    int right_size = validate_node(t->r, cmp);
+    int left_size = validate_node(t->l);
+    int right_size = validate_node(t->r);
 
+    typename Node::Comparator cmp;
     if (t->l != nullptr) assert(cmp(t->l->val, t->val));
     if (t->r != nullptr) assert(cmp(t->val, t->r->val));
     assert(t->sz == left_size + t->cnt + right_size);
@@ -36,10 +37,9 @@ vector<typename Node::Value> values_of(Node* t) {
 template <TreapNodeLike Node>
 void validate(
     Node* t,
-    const vector<typename Node::Value>& expected,
-    const typename Node::Comparator& cmp = typename Node::Comparator()
+    const vector<typename Node::Value>& expected
 ) {
-    assert(validate_node(t, cmp) == static_cast<int>(expected.size()));
+    assert(validate_node(t) == static_cast<int>(expected.size()));
     assert(values_of(t) == expected);
 }
 
@@ -120,42 +120,31 @@ void test_rank() {
     clean(root);
 }
 
-struct StatefulCompare {
-    bool descending = false;
-
+struct DescendingCompare {
     bool operator()(int a, int b) const {
-        return descending ? a > b : a < b;
+        return a > b;
     }
 };
 
-void test_stateful_comparator() {
-    StatefulCompare cmp{.descending = true};
+void test_stateless_comparator() {
     vector<int> expected = {9, 7, 5, 3, 1};
-    TreapNode<int, StatefulCompare>* root = nullptr;
+    TreapNode<int, DescendingCompare>* root = nullptr;
 
-    for (int value : {1, 7, 3, 9, 5}) insert(root, value, cmp);
-    validate(root, expected, cmp);
+    for (int value : {1, 7, 3, 9, 5}) insert(root, value);
+    validate(root, expected);
     assert(find_by_rank(root, 0) == 9);
-    assert(rank_of_key(root, 5, cmp) == 2);
-    assert(get_cnt(root, 7, cmp) == 1);
+    assert(rank_of_key(root, 5) == 2);
+    assert(get_cnt(root, 7) == 1);
 
-    erase(root, 7, cmp);
+    erase(root, 7);
     expected.erase(expected.begin() + 1);
-    validate(root, expected, cmp);
+    validate(root, expected);
     clean(root);
 }
 
 struct SumRange {
     static long long map(int value, int count) {
         return 1LL * value * count;
-    }
-
-    static long long update(const long long& sum, const long long& delta, int size) {
-        return sum + delta * size;
-    }
-
-    static long long propogate(const long long& current, const long long& next) {
-        return current + next;
     }
 
     static long long reduce(const long long& left, const long long& right) {
@@ -181,39 +170,33 @@ void test_aggregate() {
     clean(root);
 }
 
-void test_lazy_aggregate_update() {
-    using SumNode = TreapNode<int, less<int>, long long, SumRange>;
-    SumNode* root = nullptr;
-
-    for (int value : {1, 3, 5}) insert(root, value);
-    propogate(root, 10);
-    propogate(root, 2);
-    assert(root->res == 45);
-
-    auto [left, right] = split(root, 5);
-    assert(left->res == 28);
-    assert(right->res == 17);
-
-    root = merge(left, right);
-    insert(root, 7);
-    assert(root->res == 52);
-    clean(root);
-}
-
 void test_range_query() {
     using SumNode = TreapNode<int, less<int>, long long, SumRange>;
     SumNode* root = nullptr;
 
-    for (int value : {5, 1, 5, 3, 1, 7}) insert(root, value);
-    assert(range_query(root, 0, 5) == 22);
-    assert(range_query(root, 1, 4) == 14);
-    assert(range_query(root, 0, 1) == 2);
-    assert(range_query(root, 2, 3) == 8);
-    assert(range_query(root, 3, 5) == 17);
+    insert(root, 5);
+    insert(root, 1);
+    assert(range_query(root, 0, 1) == 6);
 
-    propogate(root, 10);
-    assert(range_query(root, 2, 5) == 60);
-    assert(range_query(root, 2, 5) == 60);
+    insert(root, 5);
+    insert(root, 3);
+    assert(range_query(root, 1, 2) == 8);
+
+    erase(root, 5);
+    assert(range_query(root, 0, 1) == 4);
+
+    insert(root, 7);
+    assert(range_query(root, 1, 2) == 10);
+
+    insert(root, 1);
+    assert(range_query(root, 0, 3) == 12);
+    assert(range_query(root, 0, 1) == 2);
+
+    erase(root, 3);
+    assert(range_query(root, 1, 2) == 8);
+
+    insert(root, 5);
+    assert(range_query(root, 1, 3) == 13);
     clean(root);
 }
 
@@ -222,14 +205,6 @@ struct ConcatenateRange {
         string result;
         while (count-- > 0) result += to_string(value);
         return result;
-    }
-
-    static string update(const string& value, const string&, int) {
-        return value;
-    }
-
-    static string propogate(const string& current, const string&) {
-        return current;
     }
 
     static string reduce(const string& left, const string& right) {
@@ -241,10 +216,22 @@ void test_range_query_order() {
     using StringNode = TreapNode<int, less<int>, string, ConcatenateRange>;
     StringNode* root = nullptr;
 
-    for (int value : {4, 1, 3, 2}) insert(root, value);
+    insert(root, 4);
+    insert(root, 1);
+    assert(range_query(root, 0, 1) == "14");
+
+    insert(root, 3);
+    insert(root, 2);
     assert(range_query(root, 0, 3) == "1234");
+
+    erase(root, 3);
+    assert(range_query(root, 1, 2) == "24");
+
+    insert(root, 3);
     assert(range_query(root, 1, 3) == "234");
-    assert(range_query(root, 0, 2) == "123");
+
+    erase(root, 1);
+    assert(range_query(root, 0, 2) == "234");
     clean(root);
 }
 
@@ -253,9 +240,8 @@ int main() {
     test_insert_delete();
     test_unite();
     test_rank();
-    test_stateful_comparator();
+    test_stateless_comparator();
     test_aggregate();
-    test_lazy_aggregate_update();
     test_range_query();
     test_range_query_order();
 }

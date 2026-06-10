@@ -9,16 +9,6 @@ struct DefaultRange {
         return static_cast<S>(x);
     }
 
-    // i.e we update the value of the reduced result.
-    static S update(const S& s, const S&, int) {
-        return s;
-    }
-
-    // we update what to propogate.
-    static S propogate(const S& s, const S&) {
-        return s;
-    }
-
     static S reduce(const S& s, const S&) {
         return s;
     }
@@ -41,8 +31,6 @@ struct TreapNode {
 
     S self;
     S res;
-    S to_prop;
-    bool has_prop = false;
     
     TreapNode *l = nullptr, *r = nullptr;
 
@@ -50,12 +38,13 @@ struct TreapNode {
         : prior(rng()),
           val(std::move(val)),
           self(RangePolicy::map(this->val, 1)),
-          res(self),
-          to_prop{} {}
+          res(self) {}
 };
 
 template <typename NodeType> 
-concept TreapNodeLike = requires(
+concept TreapNodeLike =
+default_initializable<typename NodeType::Comparator>
+&& requires(
     NodeType t, 
     typename NodeType::Value value,
     typename NodeType::Aggregate aggregate,
@@ -68,8 +57,6 @@ concept TreapNodeLike = requires(
 
     { t.self } -> same_as<typename NodeType::Aggregate&>;
     { t.res } -> same_as<typename NodeType::Aggregate&>;
-    { t.to_prop } -> same_as<typename NodeType::Aggregate&>;
-    { t.has_prop } -> same_as<bool&>;
    
     { t.l } -> same_as<NodeType*&>;
     { t.r } -> same_as<NodeType*&>;
@@ -78,41 +65,12 @@ concept TreapNodeLike = requires(
 
     { NodeType::RangePolicy::map(value, 1) } -> same_as<typename NodeType::Aggregate>;
 
-    { NodeType::RangePolicy::update(aggregate, aggregate, 1) } -> same_as<typename NodeType::Aggregate>;
-
-    { NodeType::RangePolicy::propogate(aggregate, aggregate) } -> same_as<typename NodeType::Aggregate>;
-
     { NodeType::RangePolicy::reduce(aggregate, aggregate) } -> same_as<typename NodeType::Aggregate>;
 };
 
 template <TreapNodeLike Node>
 int get_sz(Node *t) {
     return t == nullptr ? 0 : t->sz;
-}
-
-template <TreapNodeLike Node>
-void propogate(Node *t, const typename Node::Aggregate& to_prop) {
-    if (t == nullptr) return;
-
-    t->self = Node::RangePolicy::update(t->self, to_prop, t->cnt);
-    t->res = Node::RangePolicy::update(t->res, to_prop, t->sz);
-    
-    if (t->has_prop) {
-        t->to_prop = Node::RangePolicy::propogate(t->to_prop, to_prop);
-    } else {
-        t->has_prop = true;
-        t->to_prop = to_prop;
-    }
-}
-
-// pull the updates into the direct children
-template<TreapNodeLike Node>
-void pull(Node *t) {
-    if (t == nullptr || !t->has_prop) return;
-
-    propogate(t->l, t->to_prop);
-    propogate(t->r, t->to_prop);
-    t->has_prop = false;
 }
 
 // l, r must have the correct agg.
@@ -135,17 +93,16 @@ void combine(Node *t, Node *l, Node *r) {
 }
 
 template <TreapNodeLike Node>
-array<Node*, 2> split(Node *t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
+array<Node*, 2> split(Node *t, const typename Node::Value& val) {
     if (t == nullptr) return {nullptr, nullptr};
-    
-    pull(t);
-    
+
+    typename Node::Comparator cmp;
     if (cmp(t->val, val)) {
-        auto [l, r] = split(t->r, val, cmp);
+        auto [l, r] = split(t->r, val);
         combine(t, t->l, l);
         return {t, r};
     } else {
-        auto [l, r] = split(t->l, val, cmp);
+        auto [l, r] = split(t->l, val);
         combine(t, r, t->r);
         return {l, t};
     }
@@ -153,11 +110,10 @@ array<Node*, 2> split(Node *t, const typename Node::Value& val, const typename N
 
 // return less than, equal, more than.
 template<TreapNodeLike Node>
-array<Node*, 3> split_equal(Node *t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
+array<Node*, 3> split_equal(Node *t, const typename Node::Value& val) {
     if (t == nullptr) return {nullptr, nullptr, nullptr};
 
-    pull(t);
-
+    typename Node::Comparator cmp;
     if (!cmp(t->val, val) && !cmp(val, t->val)) {
         auto l = t->l, r = t->r;
         combine<Node>(t, nullptr, nullptr);
@@ -165,24 +121,22 @@ array<Node*, 3> split_equal(Node *t, const typename Node::Value& val, const type
     }
 
     if (cmp(t->val, val)) {
-        auto [l, e, r] = split_equal(t->r, val, cmp);
+        auto [l, e, r] = split_equal(t->r, val);
         combine(t, t->l, l);
         return {t, e, r};
     } else {
-        auto [l, e, r] = split_equal(t->l, val, cmp);
+        auto [l, e, r] = split_equal(t->l, val);
         combine(t, r, t->r);
         return {l, e, t};
     }
 }
 
 template <TreapNodeLike Node>
-Node* merge(Node *l, Node *r, const typename Node::Comparator& cmp = typename Node::Comparator()) {
+Node* merge(Node *l, Node *r) {
     if (l == nullptr) return r;
     if (r == nullptr) return l;
 
-    pull(l);
-    pull(r);
-
+    typename Node::Comparator cmp;
     // if l->val and r->val are the same, then l cannot have any right children and r cannot have any left children.
     if (!cmp(l->val, r->val) && !cmp(r->val, l->val)) {
         l->prior = max(l->prior, r->prior);
@@ -194,49 +148,42 @@ Node* merge(Node *l, Node *r, const typename Node::Comparator& cmp = typename No
     }
 
     if (l->prior >= r->prior) {
-        combine(l, l->l, merge(l->r, r, cmp));
+        combine(l, l->l, merge(l->r, r));
         return l;
     } else {
-        combine(r, merge(l, r->l, cmp), r->r);
+        combine(r, merge(l, r->l), r->r);
         return r;
     }
 }
 
 
 template <TreapNodeLike Node>
-void insert(Node*& t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
-    pull(t);
-    
-    auto [l, r] = split(t, val, cmp);
-    t = merge(l, merge(new Node(val), r, cmp), cmp);
+void insert(Node*& t, const typename Node::Value& val) {
+    auto [l, r] = split(t, val);
+    t = merge(l, merge(new Node(val), r));
 }
 
 template <TreapNodeLike Node>
-void erase(Node*& t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
-    pull(t);
-    
-    auto [l, e, r] = split_equal(t, val, cmp);
+void erase(Node*& t, const typename Node::Value& val) {
+    auto [l, e, r] = split_equal(t, val);
     delete e;
-    t = merge(l, r, cmp);
+    t = merge(l, r);
 }
 
 template<TreapNodeLike Node>
-Node* unite(Node *t1, Node *t2, const typename Node::Comparator& cmp = typename Node::Comparator()) {
-    pull(t1);
-    pull(t2);
-
+Node* unite(Node *t1, Node *t2) {
     if (t1 == nullptr) return t2;
     if (t2 == nullptr) return t1;
 
     if (t1->prior < t2->prior) swap(t1, t2);
     
-    auto [l, e, r] = split_equal(t2, t1->val, cmp);
+    auto [l, e, r] = split_equal(t2, t1->val);
     if (e != nullptr) {
         t1->cnt += e->cnt;
         t1->self = Node::RangePolicy::reduce(t1->self, e->self);
         delete e;
     }
-    combine<Node>(t1, unite(t1->l, l, cmp), unite(t1->r, r, cmp));
+    combine<Node>(t1, unite(t1->l, l), unite(t1->r, r));
     return t1;
 }
 
@@ -258,13 +205,14 @@ typename Node::Value find_by_rank(Node *t, int rank) {
 // returns how many elements are less than val.
 // follow GNU PBDS order_of_key.
 template<TreapNodeLike Node>
-int rank_of_key(Node *t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
+int rank_of_key(Node *t, const typename Node::Value& val) {
     if (t == nullptr) return 0;
 
+    typename Node::Comparator cmp;
     if (cmp(t->val, val)) {
-        return get_sz(t->l) + t->cnt + rank_of_key(t->r, val, cmp);
+        return get_sz(t->l) + t->cnt + rank_of_key(t->r, val);
     } else if (cmp(val, t->val)) {
-        return rank_of_key(t->l, val,cmp);
+        return rank_of_key(t->l, val);
     } else {
         return get_sz(t->l);
     }
@@ -278,8 +226,6 @@ template <TreapNodeLike Node>
 typename Node::Aggregate range_query(Node *t, int l_rank, int r_rank) {
     assert(t != nullptr);
     assert(0 <= l_rank && l_rank <= r_rank && r_rank < t->sz);
-
-    pull(t);
 
     if (l_rank == 0 && r_rank == t->sz - 1) return t->res;
 
@@ -313,11 +259,12 @@ typename Node::Aggregate range_query(Node *t, int l_rank, int r_rank) {
 }
 
 template<TreapNodeLike Node>
-int get_cnt(Node *t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
+int get_cnt(Node *t, const typename Node::Value& val) {
     if (t == nullptr) return 0;
 
+    typename Node::Comparator cmp;
     if (!cmp(t->val, val) && !cmp(val, t->val)) return t->cnt;
-    return cmp(t->val, val) ? get_cnt(t->r, val, cmp) : get_cnt(t->l, val, cmp);
+    return cmp(t->val, val) ? get_cnt(t->r, val) : get_cnt(t->l, val);
 }
 
 template<TreapNodeLike Node>
