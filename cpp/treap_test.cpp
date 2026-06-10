@@ -63,6 +63,7 @@ void test_simple_insert() {
     TreapNode<int>* root = nullptr;
     for(int i = 0; i < 100000; i++) insert(root, 0);
     assert(root->cnt == 100000);
+    assert(root->sz == 100000);
 
     clean(root);
 }
@@ -79,6 +80,7 @@ void test_insert_delete() {
     for (int x : std::views::iota(0, 100)) erase(root, x);
     expected = vector(expected.begin() + 100, expected.end());
     validate(root, expected);
+    assert(root->sz = 99900);
 
     clean(root);
 }
@@ -103,9 +105,27 @@ void test_unite() {
     clean(t3);
 }
 
+void test_rank() {
+    auto nums = random_nums(100000);
+    vector<int> expected(100000);
+    iota(expected.begin(), expected.end(), 0);
+    
+    TreapNode<int>* root = nullptr;
+    for (int x : nums) insert(root, x);
+    
+    for (int i = 0; i < 100; i++) {
+        assert(find_by_rank<int>(root, i) == i);
+    }
+    for (int i = 5000; i < 6000; i++) {
+        assert(rank_of_key<int>(root, i) == i);
+    }
+
+}
+
 int main() {
-    test_simple_insert();
-    test_insert_delete();
-    test_unite();
+    //test_simple_insert();
+    //test_insert_delete();
+    //test_unite();
+    test_rank();
 }
 

@@ -7,6 +7,7 @@ struct TreapNode {
     
     T val;
     int cnt = 1;
+    int sz = 1;
     int prior;
     TreapNode<T, Compare> *l = nullptr, *r = nullptr;
 
@@ -14,15 +15,29 @@ struct TreapNode {
 };
 
 template <typename T, typename Compare = std::less<T>>
+int get_sz(TreapNode<T, Compare> *t) {
+    return t == nullptr ? 0 : t->sz;
+}
+
+template <typename T, typename Compare = std::less<T>>
+void combine(TreapNode<T, Compare>* t, TreapNode<T, Compare>* l, TreapNode<T, Compare>* r) {
+    t->l = l;
+    t->r = r;
+    int lsz = (l == nullptr) ? 0 : l->sz;
+    int rsz = (r == nullptr) ? 0 : r->sz;
+    t->sz = t->cnt + lsz + rsz;
+}
+
+template <typename T, typename Compare = std::less<T>>
 array<TreapNode<T, Compare>*, 2> split(TreapNode<T> *t, T val, const Compare& cmp = Compare()) {
     if (t == nullptr) return {nullptr, nullptr};
     if (cmp(t->val, val)) {
         auto [l, r] = split(t->r, val);
-        t->r = l;
+        combine(t, t->l, l);
         return {t, r};
     } else {
         auto [l, r] = split(t->l, val);
-        t->l = r;
+        combine(t, r, t->r);
         return {l, t};
     }
 }
@@ -34,17 +49,17 @@ array<TreapNode<T>*, 3> split_equal(TreapNode<T> *t, T val, const Compare& cmp =
 
     if (!cmp(t->val, val) && !cmp(val, t->val)) {
         auto l = t->l, r = t->r;
-        t->l = t->r = nullptr;
+        combine<T, Compare>(t, nullptr, nullptr);
         return {l, t, r};
     }
 
     if (cmp(t->val, val)) {
         auto [l, e, r] = split_equal(t->r, val, cmp);
-        t->r = l;
+        combine<T, Compare>(t, t->l, l);
         return {t, e, r};
     } else {
         auto [l, e, r] = split_equal(t->l, val, cmp);
-        t->l = r;
+        combine<T, Compare>(t, r, t->r);
         return {l, e, t};
     }
 }
@@ -58,16 +73,16 @@ TreapNode<T, Compare>* merge(TreapNode<T, Compare> *l, TreapNode<T, Compare> *r,
     if (!cmp(l->val, r->val) && !cmp(r->val, l->val)) {
         l->prior = max(l->prior, r->prior);
         l->cnt += r->cnt;
-        l->r = r->r;
+        combine<T, Compare>(l, l->l, r->r);
         delete r;
         return l;
     }
 
     if (l->prior >= r->prior) {
-        l->r = merge(l->r, r, cmp);
+        combine<T, Compare>(l, l->l, merge(l->r, r));
         return l;
     } else {
-        r->l = merge(l, r->l, cmp);
+        combine<T, Compare>(r, merge(l, r->l), r->r);
         return r;
     }
 }
@@ -87,7 +102,7 @@ void erase(TreapNode<T, Compare>*& t, T val, const Compare& cmp = Compare()) {
 }
 
 template<typename T, typename Compare = std::less<T>>
-TreapNode<T, Compare>* unite(TreapNode<T, Compare>* t1, TreapNode<T, Compare>* t2) {
+TreapNode<T, Compare>* unite(TreapNode<T, Compare> *t1, TreapNode<T, Compare> *t2) {
     if (t1 == nullptr) return t2;
     if (t2 == nullptr) return t1;
 
@@ -98,9 +113,39 @@ TreapNode<T, Compare>* unite(TreapNode<T, Compare>* t1, TreapNode<T, Compare>* t
         t1->cnt += e->cnt;
         delete e;
     }
-    t1->l = unite(t1->l, l);
-    t1->r = unite(t1->r, r);
+    combine<T, Compare>(t1, unite(t1->l, l), unite(t1->r, r));
     return t1;
+}
+
+// rank is 0 indexed.
+// no error catching, i.e rank >= t->sz or t is nullptr, its your problem.
+template<typename T, typename Compare = std::less<T>>
+T find_by_rank(TreapNode<T, Compare> *t, int rank) {
+    int go_left = get_sz<T, Compare>(t->l);
+    int go_right = go_left + t->cnt;
+
+    if (rank < go_left) {
+        return find_by_rank(t->l, rank);
+    } else if (go_left <= rank && rank < go_right) {
+        return t->val;
+    } else {
+        return find_by_rank(t->r, rank - go_right);
+    }
+} 
+
+// returns how many elements are less than val.
+// follow GNU PBDS order_of_key.
+template<typename T, typename Compare = std::less<T>>
+int rank_of_key(TreapNode<T, Compare> *t, T val, const Compare& cmp = Compare()) {
+    if (t == nullptr) return 0;
+    if (cmp(t->val, val)) {
+        return get_sz<T, Compare>(t->l) + t->cnt + rank_of_key(t->r, val, cmp);
+    } else if (cmp(val, t->val)) {
+        return rank_of_key(t->l, val,cmp);
+    } else {
+        return get_sz<T, Compare>(t->l);
+    }
+
 }
 
 template<typename T, typename Compare = std::less<T>>
