@@ -1,36 +1,141 @@
 #include <bits/stdc++.h>
 using namespace std;
 
-template <typename T, typename Compare = std::less<T>>
+template <typename T, typename S>
+struct DefaultRange {
+    static S map(T x, int) {
+        return static_cast<S>(x);
+    }
+
+    static S update(const S& s, const S&, int) {
+        return s;
+    }
+
+    static S propogate(const S& s, const S&) {
+        return s;
+    }
+
+    static S reduce(const S& s, const S&) {
+        return s;
+    }
+};
+
+template <typename T, typename Compare = std::less<T>, typename S = T, typename Range = DefaultRange<T, S>>
 struct TreapNode {
+    using Value = T;
+    using Aggregate = S;
+    using Comparator = Compare;
+    using RangePolicy = Range;
+
     inline static mt19937 rng{};
+
+    int prior;
     
     T val;
     int cnt = 1;
     int sz = 1;
-    int prior;
-    TreapNode<T, Compare> *l = nullptr, *r = nullptr;
+
+    S res;
+    S to_prop;
+    bool has_prop = false;
+    
+    TreapNode *l = nullptr, *r = nullptr;
 
     TreapNode(T val): val(val), prior(rng()) {}
 };
 
-template <typename T, typename Compare = std::less<T>>
-int get_sz(TreapNode<T, Compare> *t) {
+template <typename NodeType> 
+concept TreapNodeLike = requires(
+    NodeType t, 
+    typename NodeType::Value value,
+    typename NodeType::Aggregate aggregate,
+    typename NodeType::Comparator cmp
+) {
+    { t.prior } -> same_as<int&>;
+    { t.val } -> same_as<typename NodeType::Value&>;
+    { t.cnt } -> same_as<int&>;
+    { t.sz } -> same_as<int&>;
+
+    { t.res } -> same_as<typename NodeType::Aggregate&>;
+    { t.to_prop } -> same_as<typename NodeType::Aggregate&>;
+    { t.has_prop } -> same_as<bool&>;
+   
+    { t.l } -> same_as<NodeType*&>;
+    { t.r } -> same_as<NodeType*&>;
+
+    { cmp(value, value) } -> convertible_to<bool>;
+
+    { NodeType::RangePolicy::map(value, 1) } -> same_as<typename NodeType::Aggregate>;
+
+    { NodeType::RangePolicy::update(aggregate, aggregate, 1) } -> same_as<typename NodeType::Aggregate>;
+
+    { NodeType::RangePolicy::propogate(aggregate, aggregate) } -> same_as<typename NodeType::Aggregate>;
+
+    { NodeType::RangePolicy::reduce(aggregate, aggregate) } -> same_as<typename NodeType::Aggregate>;
+
+
+
+};
+
+template <TreapNodeLike Node>
+int get_sz(Node *t) {
     return t == nullptr ? 0 : t->sz;
 }
 
-template <typename T, typename Compare = std::less<T>>
-void combine(TreapNode<T, Compare>* t, TreapNode<T, Compare>* l, TreapNode<T, Compare>* r) {
+template <TreapNodeLike Node>
+void propogate(Node *t, const typename Node::Aggregate& to_prop) {
+    if (t == nullptr) return;
+
+    if (t->has_prop) {
+        t->to_prop = Node::RangePolicy::propogate(t->to_prop, to_prop);
+    } else {
+        t->has_prop = true;
+        t->to_prop = to_prop;
+    }
+}
+
+// pull the updates into the direct children
+template<TreapNodeLike Node>
+void pull(Node *t) {
+    if (t == nullptr || !t->has_prop) return;
+    
+    if (t->l != nullptr) {
+        t->l->res = Node::RangePolicy::update(t->l->res, t->to_prop, t->l->sz);
+        propogate(t->l, t->to_prop);
+    }
+    if (t->r != nullptr) {
+        t->r->res = Node::RangePolicy::update(t->r->res, t->to_prop, t->r->sz);
+        propogate(t->r, t->to_prop);
+    }
+    t->has_prop = false;
+}
+
+// l, r must have the correct agg.
+template <TreapNodeLike Node>
+void combine(Node *t, Node *l, Node *r) {
     t->l = l;
     t->r = r;
+    
     int lsz = (l == nullptr) ? 0 : l->sz;
     int rsz = (r == nullptr) ? 0 : r->sz;
     t->sz = t->cnt + lsz + rsz;
+
+    t->res = Node::RangePolicy::map(t->val, t->cnt);
+    if (l != nullptr) {
+        t->res = Node::RangePolicy::reduce(l->res, t->res);
+    }
+    if (r != nullptr) {
+        t->res = Node::RangePolicy::reduce(t->res, r->res);
+    }
+    
 }
 
-template <typename T, typename Compare = std::less<T>>
-array<TreapNode<T, Compare>*, 2> split(TreapNode<T> *t, T val, const Compare& cmp = Compare()) {
+template <TreapNodeLike Node>
+array<Node*, 2> split(Node *t, typename Node::Value val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
     if (t == nullptr) return {nullptr, nullptr};
+    
+    pull(t);
+    
     if (cmp(t->val, val)) {
         auto [l, r] = split(t->r, val);
         combine(t, t->l, l);
@@ -43,66 +148,78 @@ array<TreapNode<T, Compare>*, 2> split(TreapNode<T> *t, T val, const Compare& cm
 }
 
 // return less than, equal, more than.
-template<typename T, typename Compare = std::less<T>>
-array<TreapNode<T>*, 3> split_equal(TreapNode<T> *t, T val, const Compare& cmp = Compare()) {
+template<TreapNodeLike Node>
+array<Node*, 3> split_equal(Node *t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
     if (t == nullptr) return {nullptr, nullptr, nullptr};
+
+    pull(t);
 
     if (!cmp(t->val, val) && !cmp(val, t->val)) {
         auto l = t->l, r = t->r;
-        combine<T, Compare>(t, nullptr, nullptr);
+        combine(t, nullptr, nullptr);
         return {l, t, r};
     }
 
     if (cmp(t->val, val)) {
         auto [l, e, r] = split_equal(t->r, val, cmp);
-        combine<T, Compare>(t, t->l, l);
+        combine(t, t->l, l);
         return {t, e, r};
     } else {
         auto [l, e, r] = split_equal(t->l, val, cmp);
-        combine<T, Compare>(t, r, t->r);
+        combine(t, r, t->r);
         return {l, e, t};
     }
 }
 
-template <typename T, typename Compare = std::less<T>>
-TreapNode<T, Compare>* merge(TreapNode<T, Compare> *l, TreapNode<T, Compare> *r, const Compare& cmp = Compare()) {
+template <TreapNodeLike Node>
+Node* merge(Node *l, Node *r, const typename Node::Comparator& cmp = typename Node::Comparator()) {
     if (l == nullptr) return r;
     if (r == nullptr) return l;
+
+    pull(l);
+    pull(r);
 
     // if l->val and r->val are the same, then l cannot have any right children and r cannot have any left children.
     if (!cmp(l->val, r->val) && !cmp(r->val, l->val)) {
         l->prior = max(l->prior, r->prior);
         l->cnt += r->cnt;
-        combine<T, Compare>(l, l->l, r->r);
+        combine(l, l->l, r->r);
         delete r;
         return l;
     }
 
     if (l->prior >= r->prior) {
-        combine<T, Compare>(l, l->l, merge(l->r, r));
+        combine(l, l->l, merge(l->r, r));
         return l;
     } else {
-        combine<T, Compare>(r, merge(l, r->l), r->r);
+        combine(r, merge(l, r->l), r->r);
         return r;
     }
 }
 
 
-template <typename T, typename Compare = std::less<T>>
-void insert(TreapNode<T, Compare>*& t, T val, const Compare& cmp = Compare()) {
-    auto [l, r] = split<T, Compare>(t, val);
-    t = merge(l, merge(new TreapNode(val), r));
+template <TreapNodeLike Node>
+void insert(Node*& t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
+    pull(t);
+    
+    auto [l, r] = split<Node>(t, val);
+    t = merge(l, merge(new Node(val), r));
 }
 
-template <typename T, typename Compare = std::less<T>>
-void erase(TreapNode<T, Compare>*& t, T val, const Compare& cmp = Compare()) {
-    auto [l, e, r] = split_equal<T, Compare>(t, val);
+template <TreapNodeLike Node>
+void erase(Node*& t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
+    pull(t);
+    
+    auto [l, e, r] = split_equal(t, val);
     delete e;
     t = merge(l, r);
 }
 
-template<typename T, typename Compare = std::less<T>>
-TreapNode<T, Compare>* unite(TreapNode<T, Compare> *t1, TreapNode<T, Compare> *t2) {
+template<TreapNodeLike Node>
+Node* unite(Node *t1, Node *t2) {
+    pull(t1);
+    pull(t2);
+
     if (t1 == nullptr) return t2;
     if (t2 == nullptr) return t1;
 
@@ -113,14 +230,14 @@ TreapNode<T, Compare>* unite(TreapNode<T, Compare> *t1, TreapNode<T, Compare> *t
         t1->cnt += e->cnt;
         delete e;
     }
-    combine<T, Compare>(t1, unite(t1->l, l), unite(t1->r, r));
+    combine<Node>(t1, unite(t1->l, l), unite(t1->r, r));
     return t1;
 }
 
 // Rank is 0 indexed. Requires t != nullptr and 0 <= rank < t->sz.
-template<typename T, typename Compare = std::less<T>>
-T find_by_rank(TreapNode<T, Compare> *t, int rank) {
-    int go_left = get_sz<T, Compare>(t->l);
+template<TreapNodeLike Node>
+typename Node::Value find_by_rank(Node *t, int rank) {
+    int go_left = get_sz(t->l);
     int go_right = go_left + t->cnt;
 
     if (rank < go_left) {
@@ -134,29 +251,32 @@ T find_by_rank(TreapNode<T, Compare> *t, int rank) {
 
 // returns how many elements are less than val.
 // follow GNU PBDS order_of_key.
-template<typename T, typename Compare = std::less<T>>
-int rank_of_key(TreapNode<T, Compare> *t, T val, const Compare& cmp = Compare()) {
+template<TreapNodeLike Node>
+int rank_of_key(Node *t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
     if (t == nullptr) return 0;
+
     if (cmp(t->val, val)) {
-        return get_sz<T, Compare>(t->l) + t->cnt + rank_of_key(t->r, val, cmp);
+        return get_sz(t->l) + t->cnt + rank_of_key(t->r, val, cmp);
     } else if (cmp(val, t->val)) {
         return rank_of_key(t->l, val,cmp);
     } else {
-        return get_sz<T, Compare>(t->l);
+        return get_sz(t->l);
     }
 
 }
 
-template<typename T, typename Compare = std::less<T>>
-int get_cnt(TreapNode<T, Compare>* t, T val, const Compare& cmp = Compare()) {
+template<TreapNodeLike Node>
+int get_cnt(Node *t, const typename Node::Value& val, const typename Node::Comparator& cmp = typename Node::Comparator()) {
     if (t == nullptr) return 0;
+
     if (!cmp(t->val, val) && !cmp(val, t->val)) return t->cnt;
     return cmp(t->val, val) ? get_cnt(t->r, val) : get_cnt(t->l, val);
 }
 
-template<typename T, typename Compare = std::less<T>>
-void clean(TreapNode<T, Compare>* t) {
+template<TreapNodeLike Node>
+void clean(Node *t) {
     if (t == nullptr) return;
+
     clean(t->l);
     clean(t->r);
     delete t;
