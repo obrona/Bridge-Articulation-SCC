@@ -87,13 +87,11 @@ void push(Node *t) {
 template <TreapNodeLike Node>
 void combine(Node *t, Node *l, Node *r) {
     t->sz = 1 + get_sz(l) + get_sz(r);
-    t->agg = t->val;
-    if (l) {
-        t->agg = Node::Range::reduce(t->agg, l->agg);
-    } 
-    if (r) {
-        t->agg = Node::Range::reduce(t->agg, r->agg);
-    }
+    
+    typename Node::Value agg = (!l) ? t->val : Node::Range::reduce(l->agg, t->val);
+    if (r) agg = Node::Range::reduce(agg, r->agg);
+    
+    t->agg = agg;
     t->l = l;
     t->r = r;
 }

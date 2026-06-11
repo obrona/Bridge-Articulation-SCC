@@ -106,7 +106,7 @@ void test_randomized() {
     uniform_int_distribution<long long> delta_value(-100, 100);
 
     constexpr int size = 100000;
-    constexpr int operations = 5;
+    constexpr int operations = 200;
 
     vector<long long> values(size);
     ranges::generate(values, [&] { return initial_value(generator); });
