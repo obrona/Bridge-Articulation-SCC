@@ -136,10 +136,28 @@ void test_randomized() {
     clean(root);
 }
 
+template <typename Policy>
+void test_large_size() {
+    using Node = TreapNode<long long, Policy>;
+
+    vector<long long> values(100000, 0);
+    Node *root = build<Node>(values);
+    
+    for (int op = 0; op < 100000; op++) {
+        range_update(root, op, min(op + 100, 99999), 1);
+    }
+
+    assert(range_query(root, 0, 0) == 1);
+
+    clean(root);
+}
+
 int main() {
     test_fixed_cases<RangeAddMin>();
     test_randomized<RangeAddMin>();
 
     test_fixed_cases<RangeAddMax>();
     test_randomized<RangeAddMax>();
+
+    test_large_size<RangeAddMax>();
 }
