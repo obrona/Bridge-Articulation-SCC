@@ -9,6 +9,9 @@ using namespace std;
 // 3. range update
 // 4. range query
 
+// invariant for split and merge.
+// the root node aggregate is absolutely correct, all lazy updates have been applied.
+
 mt19937 rng{};
 
 template <typename T>
@@ -40,6 +43,8 @@ struct TreapNode {
     T agg;
     optional<T> prop; // value to propogate downwards.
 
+    TreapNode *l = nullptr, *r = nullptr;
+
     TreapNode(T val): val(val), prior(rng()), agg(val) {};
 };
 
@@ -51,9 +56,9 @@ concept TreapNodeLike = requires(NodeType t, typename NodeType::Value val, typen
     { t.agg } -> same_as<typename NodeType::Value&>;
     { t.prop } -> same_as<optional<typename NodeType::Value>&>;
 
-    { NodeType::RangePolicy::update(val, val) } -> same_as<typename NodeType::Value>;
-    { NodeType::RangePolicy::update_agg(val, val, 1) } -> same_as<typename NodeType::Value>;
-    { NodeType::RangePolicy::update(val, val) } -> same_as<typename NodeType::Value>;
+    { NodeType::Range::update(val, val) } -> same_as<typename NodeType::Value>;
+    { NodeType::Range::update_agg(val, val, 1) } -> same_as<typename NodeType::Value>;
+    { NodeType::Range::update(val, val) } -> same_as<typename NodeType::Value>;
 };
 
 template <TreapNodeLike Node>
@@ -64,13 +69,13 @@ void update(Node *t, const typename Node::Value& p) {
     if (t == nullptr) return;
 
     t->val = Node::Range::update(t->val, p);
-    t->agg = Node::Range::update_agg(t->agg, p, t-sz);
+    t->agg = Node::Range::update_agg(t->agg, p, t->sz);
     t->prop = (t->prop) ? Node::Range::update(t->prop.value(), p) : p;
 }
 
 template <TreapNodeLike Node>
 void push(Node *t) {
-    if (t == nullptr || !t.prop) return;
+    if (t == nullptr || !t->prop) return;
 
     update(t->l, t->prop.value());
     update(t->r, t->prop.value());
@@ -87,6 +92,8 @@ void combine(Node *t, Node *l, Node *r) {
     if (r) {
         t->agg = Node::Range::reduce(t->agg, r->agg);
     }
+    t->l = l;
+    t->r = r;
 }
 
 // return  < idx, >= idx
@@ -127,4 +134,64 @@ Node* merge(Node *l, Node *r) {
     }
 }
 
+template <TreapNodeLike Node>
+void insert(Node *&t, int idx, typename Node::Value val) {
+    push(t);
+    auto [l, r] = split(t, idx);
+    t = merge(l, merge(new Node(val), r));
+}
+
+template <TreapNodeLike Node>
+void erase(Node *&t, int idx) {
+    push(t);
+    auto [l, r] = split(t, idx);
+    auto [l2, r2] = split(r, idx + 1);
+    t = merge(l, r2);
+}
+
+// update the range [s, e]
+template <TreapNodeLike Node>
+void range_update(Node *t, int s, int e, typename Node::Value val) {
+    push(t);
+
+    if (s == 0 && e == get_sz(t) - 1) {
+        update(t, val);
+        return;
+    }
+
+    int my_key = get_sz(t->l);
+    if (e < my_key) {
+        combine(t, range_update(t->l, s, e, val), t->r);
+    } else if (s > my_key) {
+        combine(t, t->l, range_update(t->r, s - my_key - 1, e - my_key - 1));
+    } else {
+        t->val = Node::Range::update(t->val, val);
+        combine(
+            t, 
+            range_update(t->l, s, my_key - 1, val), 
+            range_update(t->r, 0, e - my_key - 1, val)
+        );
+    }
+} 
+
+template <TreapNodeLike Node>
+void range_query(Node *t, int s, int e) {
+    push(t);
+
+    if (s == 0 && e == get_sz(t) - 1) {
+        return t->agg;
+    }
+
+    int my_key = get_sz(t->l);
+    if (e < my_key) {
+        return range_query(t->l, s, e);
+    } else if (s > my_key) {
+        return range_query(t->r, s - my_key - 1, e - my_key - 1);
+    } else {
+        Node::Value res = t->val;
+        res = Node::Range::reduce(range_query(t->l, s, my_key - 1), res);
+        res = Node::Range::reduce(res, range_query(t->r, 0, e - my_key - 1));
+        return res;
+    }
+}
 
