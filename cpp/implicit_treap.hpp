@@ -105,7 +105,7 @@ array<Node*, 2> split(Node *t, int idx) {
     int left_sz = get_sz(t->l);
     if (idx == left_sz) {
         auto l = t->l;
-        combine(t, nullptr, t->r);
+        combine(t, static_cast<Node*>(nullptr), t->r);
         return {l, t};
     } else if (idx < left_sz) {
         auto [l, r] = split(t->l, idx);
