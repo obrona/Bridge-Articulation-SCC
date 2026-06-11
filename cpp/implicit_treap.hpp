@@ -5,7 +5,7 @@ using namespace std;
 // the array on object of type T.
 // implicit treap lets us 
 // 1. insert an element at any position
-// 2. cut a subarray and paste it elsewhere
+// 2. erase an element at any position
 // 3. range update
 // 4. range query
 
@@ -196,4 +196,12 @@ typename Node::Value range_query(Node *t, int s, int e) {
         if (e > my_key) res = Node::Range::reduce(res, range_query(t->r, 0, e - my_key - 1));
         return res;
     }
+}
+
+template <TreapNodeLike Node>
+void clean(Node *root) {
+    if (root == nullptr) return;
+    clean(root->l);
+    clean(root->r);
+    delete root;
 }
